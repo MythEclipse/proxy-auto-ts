@@ -14,24 +14,17 @@ jobs:
             contents: write
             
         steps:
+              - name: Checkout repository
+                uses: actions/checkout@v2
+
               - name: Setup pnpm
                 uses: pnpm/action-setup@v4.0.0
                 with:
                   version: '7.0.0' # optional
                   dest: '~/setup-pnpm' # required
-                #   run_install: false # optional
-                #   package_json_file: # optional
-                #   standalone: false # optional
-    
+
+              - name: Check for package.json
+                run: ls -la /home/runner/work/proxy-auto-ts/proxy-auto-ts
+
               - name: Install dependencies
                 run: pnpm install
-    
-              - name: Run proxy fetcher
-                run: pnpm run proxy
-    
-              - name: Commit and push if there are changes
-                run: |
-                  git config --local user.email "github-actions[bot]@users.noreply.github.com"
-                  git config --local user.name "github-actions[bot]"
-                  git add proxies.txt
-                  git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Update proxy list [skip ci]" && git push)
