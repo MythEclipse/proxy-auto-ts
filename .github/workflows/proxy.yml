@@ -7,6 +7,7 @@ on:
     push:
         paths:
             - 'src/proxy.ts'
+
 jobs:
     fetch-and-update:
         runs-on: ubuntu-latest
@@ -20,11 +21,15 @@ jobs:
               - name: Setup pnpm
                 uses: pnpm/action-setup@v4.0.0
                 with:
-                  version: '7.0.0' # optional
-                  dest: '~/setup-pnpm' # required
+                  version: '9.15.4'
 
-              - name: Check for package.json
-                run: ls -la /home/runner/work/proxy-auto-ts/proxy-auto-ts
+              - name: Cache pnpm
+                uses: actions/cache@v3
+                with:
+                  path: ~/.pnpm-store
+                  key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+                  restore-keys: |
+                    ${{ runner.os }}-pnpm-
 
               - name: Install dependencies
                 run: pnpm install
