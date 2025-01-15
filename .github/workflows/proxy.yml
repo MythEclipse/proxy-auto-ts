@@ -1,0 +1,40 @@
+name: Auto Proxy Fetch
+
+on:
+    schedule:
+        - cron: '0 * * * *'
+    workflow_dispatch:
+    push:
+        paths:
+            - 'src/proxy.ts'
+jobs:
+    fetch-and-update:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            
+        steps:
+              - name: Checkout repository
+                uses: actions/checkout@v4
+    
+              - name: Setup Node.js
+                uses: actions/setup-node@v4
+                with:
+                  node-version: '18'
+                  cache: 'pnpm'
+    
+              - name: Install pnpm
+                run: npm install -g pnpm
+    
+              - name: Install dependencies
+                run: pnpm install
+    
+              - name: Run proxy fetcher
+                run: pnpm run proxy
+    
+              - name: Commit and push if there are changes
+                run: |
+                  git config --local user.email "github-actions[bot]@users.noreply.github.com"
+                  git config --local user.name "github-actions[bot]"
+                  git add proxies.txt
+                  git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Update proxy list [skip ci]" && git push)
