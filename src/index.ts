@@ -10,12 +10,9 @@ const getProxies = async (): Promise<string[]> => {
         const data = fs.readFileSync(PROXY_LIST_PATH, "utf-8");
         return data
             .split("\n")
-            .filter((proxy: string) => proxy.trim() !== "" && !proxy.startsWith("#") && /\d+\.\d+\.\d+\.\d+:\d+/.test(proxy));
+            .filter((proxy) => proxy.trim() !== "" && !proxy.startsWith("#") && /\d+\.\d+\.\d+\.\d+:\d+/.test(proxy));
     } catch (error) {
-        if (error instanceof Error) {
-            throw new Error(`Gagal mengambil daftar proxy: ${error.message}`);
-        }
-        throw new Error("Gagal mengambil daftar proxy: Kesalahan tak terduga.");
+        throw new Error(`Gagal mengambil daftar proxy: ${(error as Error).message}`);
     }
 };
 
@@ -25,42 +22,43 @@ const fetchWithProxy = async (url: string): Promise<any> => {
         throw new Error("Tidak ada proxy yang tersedia.");
     }
 
-    for (let i = 0; i < proxies.length; i++) {
-        const proxy = proxies[i];
-        if (!proxy) {
-            console.error("Proxy tidak ditemukan.");
-            continue;
-        }
+    // Acak urutan proxy
+    const shuffledProxies = proxies.sort(() => Math.random() - 0.5);
 
+    for (const proxy of shuffledProxies) {
         const [host, port] = proxy.split(":");
-
         if (!host || !port) {
             console.error(`Proxy tidak valid: ${proxy}`);
             continue;
         }
 
         try {
-            // Buat https agent untuk menonaktifkan verifikasi sertifikat SSL
-            const agent = new https.Agent({ rejectUnauthorized: false });
+            const axiosConfig = https
+                ? {
+                      httpsAgent: new https.Agent({
+                          host,
+                          port: parseInt(port, 10),
+                          rejectUnauthorized: false,
+                      }),
+                      proxy: {
+                          host,
+                          port: parseInt(port, 10),
+                      }, // Nonaktifkan pengaturan proxy default Axios
+                      timeout: 1000,
+                  }
+                : {
+                      proxy: {
+                          host,
+                          port: parseInt(port, 10),
+                      },
+                      timeout: 1000,
+                  };
 
-            // Konfigurasi Axios dengan proxy dan agent
-            const axiosInstance = axios.create({
-                proxy: {
-                    host,
-                    port: parseInt(port, 10),
-                },
-                httpsAgent: agent, // Menonaktifkan verifikasi sertifikat
-                timeout: 1000,
-            });
-
-            const response = await axiosInstance.get(url);
+            const response = await axios.get(url, axiosConfig);
+            console.log(`Berhasil menggunakan proxy: ${proxy}`);
             return response.data;
         } catch (error) {
-            if (error instanceof Error) {
-                console.log(`Gagal menggunakan proxy ${proxy}: ${error.message}`);
-            } else {
-                console.log(`Gagal menggunakan proxy ${proxy}: Error tak terduga.`);
-            }
+            console.error(`Gagal menggunakan proxy ${proxy}: ${(error as Error).message}`);
         }
     }
 
@@ -74,10 +72,6 @@ const fetchWithProxy = async (url: string): Promise<any> => {
         const result = await fetchWithProxy(targetUrl);
         console.log("Hasil fetch:", result);
     } catch (error) {
-        if (error instanceof Error) {
-            console.error(error.message);
-        } else {
-            console.error("Unknown error occurred");
-        }
+        console.error(`Error: ${(error as Error).message}`);
     }
 })();
