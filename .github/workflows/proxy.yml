@@ -14,15 +14,6 @@ jobs:
             contents: write
             
         steps:
-              - name: Checkout repository
-                uses: actions/checkout@v4
-    
-              - name: Setup Node.js
-                uses: actions/setup-node@v4
-                with:
-                  node-version: '18'
-                  cache: 'pnpm'
-    
               - name: Setup pnpm
                 # You may pin to the exact commit or the version.
                 # uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2
