@@ -19,9 +19,9 @@ jobs:
                 with:
                   version: '7.0.0' # optional
                   dest: '~/setup-pnpm' # required
-                  run_install: false # optional
-                  package_json_file: # optional
-                  standalone: false # optional
+                #   run_install: false # optional
+                #   package_json_file: # optional
+                #   standalone: false # optional
     
               - name: Install dependencies
                 run: pnpm install
