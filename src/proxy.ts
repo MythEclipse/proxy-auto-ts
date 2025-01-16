@@ -29,8 +29,14 @@ const sources = [
   "https://www.proxy-list.download/api/v1/get?type=https"
 ];
 
-const MAX_CONCURRENT_VALIDATIONS = 50000; // Jumlah maksimum validasi simultan
+// const MAX_CONCURRENT_VALIDATIONS = 1000; // Maksimum validasi simultan
 
+// Fungsi untuk menambahkan delay
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Ambil URL dan kembalikan isinya
 async function fetchUrl(url: string): Promise<string | null> {
   logger.info(`Fetching URL: ${url}`);
   try {
@@ -49,6 +55,7 @@ async function fetchUrl(url: string): Promise<string | null> {
   }
 }
 
+// Parse proxy list dan simpan dalam Set
 function parseProxyList(content: string, proxies: Set<string>): void {
   logger.info(`Parsing proxy list content`);
   if (!content) return;
@@ -75,50 +82,63 @@ function parseProxyList(content: string, proxies: Set<string>): void {
   logger.info(`Parsed ${proxies.size} proxies`);
 }
 
+// Validasi apakah proxy bekerja
 async function validateProxy(proxy: string): Promise<boolean> {
-  // logger.info(`Validating proxy: ${proxy}`);
-  try {
-    const [host, port] = proxy.split(":");
-    if (!host || !port) {
-      throw new Error(`Invalid proxy format: ${proxy}`);
+    // logger.info(`Validating proxy: ${proxy}`);
+    try {
+        const [host, port] = proxy.split(":");
+        if (!host || !port) {
+            throw new Error(`Invalid proxy format: ${proxy}`);
+        }
+
+        const agent = new HttpsProxyAgent(`http://${host}:${port}`, {
+            maxSockets: 10000,
+            keepAlive: true
+        });
+
+        const response = await axios.head("https://www.google.com", {
+            httpsAgent: agent,
+            timeout: 2000, // Timeout lebih pendek
+        });
+
+        const isValid = response.status === 200;
+        logger.info(`Proxy ${proxy} is ${isValid ? "valid" : "invalid"}`);
+        return isValid;
+    } catch (error) {
+        logger.error(`Error validating proxy: ${proxy}`);
+        return false;
     }
-
-    const agent = new HttpsProxyAgent(`http://${host}:${port}`, {
-      maxSockets: 10000,
-      keepAlive: true
-    });
-    const response = await axios.get("https://www.google.com", {
-      httpsAgent: agent,
-      timeout: 3000
-    });
-
-    const isValid = response.status === 200;
-    logger.info(`Proxy ${proxy} is ${isValid ? "valid" : "invalid"}`);
-    return isValid;
-  } catch (error) {
-    logger.error(`Error validating proxy ${proxy}`);
-    return false;
-  }
 }
 
+// Validasi proxy dalam batch
 async function validateProxies(proxies: Set<string>): Promise<Set<string>> {
   logger.info(`Validating ${proxies.size} proxies`);
   const validProxies = new Set<string>();
-  const limit = pLimit(MAX_CONCURRENT_VALIDATIONS);
+  const proxyArray = Array.from(proxies);
+  const batchSize = 10000; // Validasi dalam batch kecil
 
-  const validationTasks = Array.from(proxies).map((proxy) =>
-    limit(async () => {
-      if (await validateProxy(proxy)) {
-        validProxies.add(proxy);
-      }
-    })
-  );
+  for (let i = 0; i < proxyArray.length; i += batchSize) {
+    const batch = proxyArray.slice(i, i + batchSize);
+    const limit = pLimit(1000); // Maksimum 100 koneksi per batch
 
-  await Promise.all(validationTasks);
+    const validationTasks = batch.map(proxy =>
+      limit(async () => {
+        if (await validateProxy(proxy)) {
+          validProxies.add(proxy);
+        }
+      })
+    );
+
+    await Promise.all(validationTasks);
+    logger.info(`Validated batch ${i / batchSize + 1}/${Math.ceil(proxyArray.length / batchSize)}`);
+    await sleep(500); // Tambahkan jeda antara batch
+  }
+
   logger.info(`Validated ${validProxies.size} proxies`);
   return validProxies;
 }
 
+// Ambil semua proxy dari sumber
 async function fetchAllProxies(): Promise<Set<string>> {
   logger.info(`Fetching all proxies from sources`);
   const proxies = new Set<string>();
@@ -132,6 +152,7 @@ async function fetchAllProxies(): Promise<Set<string>> {
   return proxies;
 }
 
+// Simpan proxy ke file
 function saveProxies(proxies: Set<string>): void {
   if (proxies.size === 0) {
     logger.warn("No proxies found to save!");
@@ -159,6 +180,7 @@ function saveProxies(proxies: Set<string>): void {
   logger.info(`Saved ${proxies.size} proxies to proxies.txt`);
 }
 
+// Main function untuk menjalankan semua proses
 async function main() {
   logger.info(`Starting proxy fetching and validation process`);
   const proxies = await fetchAllProxies();
