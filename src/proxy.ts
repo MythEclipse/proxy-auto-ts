@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -55,13 +56,13 @@ async function validateProxy(proxy: string): Promise<boolean> {
         if (!host || !port) {
             throw new Error(`Invalid proxy format: ${proxy}`);
         }
-        const response = await axios.get('http://www.google.com', {
-            proxy: {
-                host,
-                port: Number(port)
-            },
+
+        const agent = new HttpsProxyAgent(`http://${host}:${port}`);
+        const response = await axios.get('https://www.google.com', {
+            httpsAgent: agent,
             timeout: 5000
         });
+
         return response.status === 200;
     } catch {
         return false;
