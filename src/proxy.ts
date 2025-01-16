@@ -24,7 +24,7 @@ const sources = [
     'https://www.proxy-list.download/api/v1/get?type=https',
 ];
 
-const MAX_CONCURRENT_VALIDATIONS = 1000; // Jumlah maksimum validasi simultan
+const MAX_CONCURRENT_VALIDATIONS = 10000; // Jumlah maksimum validasi simultan
 
 async function fetchUrl(url: string): Promise<string | null> {
     logger.info(`Fetching URL: ${url}`);
