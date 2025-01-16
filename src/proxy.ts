@@ -31,14 +31,6 @@ function parseProxyList(content: string, url: string, proxies: Set<string>): voi
     if (!content) return;
 
     try {
-        if (url.includes('api') && url.includes('geonode')) {
-            const data = JSON.parse(content);
-            for (const item of data.data || []) {
-                proxies.add(`${item.ip}:${item.port}`);
-            }
-            return;
-        }
-
         const lines = content.split('\n');
         for (const line of lines) {
             const cleanedLine = line.trim();
@@ -126,7 +118,11 @@ function saveProxies(proxies: Set<string>): void {
 
 async function main() {
     const proxies = await fetchAllProxies();
+    console.info(`Fetched ${proxies.size} proxies.`);
+    
     const validProxies = await validateProxies(proxies);
+    console.info(`Validated ${validProxies.size} proxies.`);
+
     saveProxies(validProxies);
 }
 
