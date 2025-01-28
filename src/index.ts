@@ -1,8 +1,11 @@
 import axios from "axios";
-import https from "https";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
+import { HttpsProxyAgent } from "https-proxy-agent";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const PROXY_LIST_PATH = path.resolve(__dirname, "../proxies.txt");
 
 const getProxies = async (): Promise<string[]> => {
@@ -10,7 +13,8 @@ const getProxies = async (): Promise<string[]> => {
         const data = fs.readFileSync(PROXY_LIST_PATH, "utf-8");
         return data
             .split("\n")
-            .filter((proxy) => proxy.trim() !== "" && !proxy.startsWith("#") && /\d+\.\d+\.\d+\.\d+:\d+/.test(proxy));
+            .filter((line) => line.trim() !== "" && !line.startsWith("#"))
+            .map((line) => line.split(" ")[0].trim());
     } catch (error) {
         throw new Error(`Gagal mengambil daftar proxy: ${(error as Error).message}`);
     }
@@ -22,39 +26,13 @@ const fetchWithProxy = async (url: string): Promise<any> => {
         throw new Error("Tidak ada proxy yang tersedia.");
     }
 
-    // Acak urutan proxy
-    const shuffledProxies = proxies.sort(() => Math.random() - 0.5);
-
-    for (const proxy of shuffledProxies) {
-        const [host, port] = proxy.split(":");
-        if (!host || !port) {
-            console.error(`Proxy tidak valid: ${proxy}`);
-            continue;
-        }
-
+    for (const proxy of proxies) {
         try {
-            const axiosConfig = https
-                ? {
-                      httpsAgent: new https.Agent({
-                          host,
-                          port: parseInt(port, 10),
-                          rejectUnauthorized: false,
-                      }),
-                      proxy: {
-                          host,
-                          port: parseInt(port, 10),
-                      }, // Nonaktifkan pengaturan proxy default Axios
-                      timeout: 1000,
-                  }
-                : {
-                      proxy: {
-                          host,
-                          port: parseInt(port, 10),
-                      },
-                      timeout: 1000,
-                  };
-
-            const response = await axios.get(url, axiosConfig);
+            const agent = new HttpsProxyAgent(proxy.startsWith('http') ? proxy : `http://${proxy}`);
+            const response = await axios.get(url, {
+                httpsAgent: agent,
+                timeout: 12000,
+              });
             console.log(`Berhasil menggunakan proxy: ${proxy}`);
             return response.data;
         } catch (error) {
@@ -67,7 +45,7 @@ const fetchWithProxy = async (url: string): Promise<any> => {
 
 // Contoh penggunaan
 (async () => {
-    const targetUrl = "https://httpbin.org/ip"; // URL target untuk testing
+    const targetUrl = "https://otakudesu.cloud"; // URL target untuk testing
     try {
         const result = await fetchWithProxy(targetUrl);
         console.log("Hasil fetch:", result);
