@@ -14,9 +14,9 @@ const logger = pino({
   transport: {
     target: "pino-pretty",
     options: {
-      colorize: true
-    }
-  }
+      colorize: true,
+    },
+  },
 });
 
 const sources = [
@@ -26,14 +26,12 @@ const sources = [
   "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
   "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
   "https://www.proxy-list.download/api/v1/get?type=http",
-  "https://www.proxy-list.download/api/v1/get?type=https"
+  "https://www.proxy-list.download/api/v1/get?type=https",
 ];
-
-// const MAX_CONCURRENT_VALIDATIONS = 1000; // Maksimum validasi simultan
 
 // Fungsi untuk menambahkan delay
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Ambil URL dan kembalikan isinya
@@ -43,9 +41,9 @@ async function fetchUrl(url: string): Promise<string | null> {
     const response = await axios.get(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
       },
-      timeout: 15000
+      timeout: 15000,
     });
     logger.info(`Fetched URL successfully: ${url}`);
     return response.data;
@@ -82,60 +80,47 @@ function parseProxyList(content: string, proxies: Set<string>): void {
   logger.info(`Parsed ${proxies.size} proxies`);
 }
 
-// Validasi apakah proxy bekerja
-async function validateProxy(proxy: string): Promise<boolean> {
-    // logger.info(`Validating proxy: ${proxy}`);
-    try {
-        const [host, port] = proxy.split(":");
-        if (!host || !port) {
-            throw new Error(`Invalid proxy format: ${proxy}`);
-        }
+// Validasi proxy dan kembalikan latensi
+async function validateProxy(proxy: string): Promise<{ proxy: string; latency: number } | null> {
+  try {
+    const [host, port] = proxy.split(":");
+    if (!host || !port) return null;
 
-        const agent = new HttpsProxyAgent(`http://${host}:${port}`, {
-            maxSockets: 10000,
-            keepAlive: true
-        });
+    const agent = new HttpsProxyAgent(`http://${host}:${port}`);
+    const startTime = Date.now();
 
-        const response = await axios.head("https://www.google.com", {
-            httpsAgent: agent,
-            timeout: 2000, // Timeout lebih pendek
-        });
+    await axios.head("https://www.google.com", {
+      httpsAgent: agent,
+      timeout: 12000,
+    });
 
-        const isValid = response.status === 200;
-        logger.info(`Proxy ${proxy} is ${isValid ? "valid" : "invalid"}`);
-        return isValid;
-    } catch (error) {
-        logger.error(`Error validating proxy: ${proxy}`);
-        return false;
-    }
+    const latency = Date.now() - startTime;
+    logger.info(`Proxy ${proxy} is valid with latency ${latency}ms`);
+    return { proxy, latency };
+  } catch (error) {
+    logger.error(`Proxy ${proxy} is invalid`);
+    return null;
+  }
 }
 
 // Validasi proxy dalam batch
-async function validateProxies(proxies: Set<string>): Promise<Set<string>> {
+async function validateProxies(proxies: Set<string>): Promise<{ proxy: string; latency: number }[]> {
   logger.info(`Validating ${proxies.size} proxies`);
-  const validProxies = new Set<string>();
+  const validatedProxies: { proxy: string; latency: number }[] = [];
   const proxyArray = Array.from(proxies);
-  const batchSize = 10000; // Validasi dalam batch kecil
+  const limit = pLimit(1000); // Batasi koneksi simultan
 
-  for (let i = 0; i < proxyArray.length; i += batchSize) {
-    const batch = proxyArray.slice(i, i + batchSize);
-    const limit = pLimit(1000); // Maksimum 100 koneksi per batch
+  const validationTasks = proxyArray.map((proxy) =>
+    limit(async () => {
+      const result = await validateProxy(proxy);
+      if (result) validatedProxies.push(result);
+    })
+  );
 
-    const validationTasks = batch.map(proxy =>
-      limit(async () => {
-        if (await validateProxy(proxy)) {
-          validProxies.add(proxy);
-        }
-      })
-    );
+  await Promise.all(validationTasks);
 
-    await Promise.all(validationTasks);
-    logger.info(`Validated batch ${i / batchSize + 1}/${Math.ceil(proxyArray.length / batchSize)}`);
-    await sleep(500); // Tambahkan jeda antara batch
-  }
-
-  logger.info(`Validated ${validProxies.size} proxies`);
-  return validProxies;
+  // Urutkan berdasarkan latensi terkecil
+  return validatedProxies.sort((a, b) => a.latency - b.latency);
 }
 
 // Ambil semua proxy dari sumber
@@ -152,32 +137,25 @@ async function fetchAllProxies(): Promise<Set<string>> {
   return proxies;
 }
 
-// Simpan proxy ke file
-function saveProxies(proxies: Set<string>): void {
-  if (proxies.size === 0) {
+// Simpan proxy ke file dengan informasi latensi
+function saveProxies(proxies: { proxy: string; latency: number }[]): void {
+  if (proxies.length === 0) {
     logger.warn("No proxies found to save!");
     return;
   }
 
   const timestamp = new Date().toISOString();
   const filePath = path.resolve(__dirname, "../proxies.txt");
-  const sortedProxies = Array.from(proxies).sort((a, b) => {
-    const [ipA, portA] = a.split(":");
-    const [ipB, portB] = b.split(":");
-    return (
-      (ipA ?? "").localeCompare(ipB ?? "") || Number(portA) - Number(portB)
-    );
-  });
 
   const fileContent = [
     `# Proxy List - Updated: ${timestamp}`,
-    `# Total proxies: ${proxies.size}`,
+    `# Total proxies: ${proxies.length}`,
     "",
-    ...sortedProxies
+    ...proxies.map((p) => `${p.proxy}  # ${p.latency}ms`),
   ].join("\n");
 
   fs.writeFileSync(filePath, fileContent, "utf-8");
-  logger.info(`Saved ${proxies.size} proxies to proxies.txt`);
+  logger.info(`Saved ${proxies.length} proxies to proxies.txt`);
 }
 
 // Main function untuk menjalankan semua proses
@@ -186,10 +164,10 @@ async function main() {
   const proxies = await fetchAllProxies();
   logger.info(`Fetched ${proxies.size} proxies.`);
 
-  const validProxies = await validateProxies(proxies);
-  logger.info(`Validated ${validProxies.size} proxies.`);
+  const validatedProxies = await validateProxies(proxies);
+  logger.info(`Validated ${validatedProxies.length} proxies.`);
 
-  saveProxies(validProxies);
+  saveProxies(validatedProxies);
   logger.info(`Process completed successfully`);
 }
 
