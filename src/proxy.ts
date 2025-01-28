@@ -149,7 +149,7 @@ function saveProxies(proxies: { proxy: string; latency: number }[]): void {
     ...proxies.map((p) => `${p.proxy}  # ${p.latency}ms`),
   ].join("\n");
 
-  fs.writeFileSync(filePath, "utf-8");
+  fs.writeFileSync(filePath, fileContent, "utf-8");
   logger.info(`Saved ${proxies.length} proxies to proxies.txt`);
 }
 
