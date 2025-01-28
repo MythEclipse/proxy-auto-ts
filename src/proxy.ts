@@ -29,9 +29,7 @@ const sources = [
   "https://www.proxy-list.download/api/v1/get?type=https",
 ];
 
-// Fungsi untuk menambahkan delayWW
-
-// Ambil URL dan kembalikan isinya
+// Fungsi untuk mengambil URL dengan timeout 6 detik
 async function fetchUrl(url: string): Promise<string | null> {
   logger.info(`Fetching URL: ${url}`);
   try {
@@ -40,7 +38,7 @@ async function fetchUrl(url: string): Promise<string | null> {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
       },
-      timeout: 15000,
+      timeout: 20000, // Timeout 6 detik
     });
     logger.info(`Fetched URL successfully: ${url}`);
     return response.data;
@@ -77,7 +75,7 @@ function parseProxyList(content: string, proxies: Set<string>): void {
   logger.info(`Parsed ${proxies.size} proxies`);
 }
 
-// Validasi proxy dan kembalikan latensi
+// Validasi proxy dengan timeout 6 detik
 async function validateProxy(proxy: string): Promise<{ proxy: string; latency: number } | null> {
   try {
     const [host, port] = proxy.split(":");
@@ -88,7 +86,7 @@ async function validateProxy(proxy: string): Promise<{ proxy: string; latency: n
 
     await axios.head("https://www.google.com", {
       httpsAgent: agent,
-      timeout: 12000,
+      timeout: 6000, // Timeout 6 detik
     });
 
     const latency = Date.now() - startTime;
@@ -151,7 +149,7 @@ function saveProxies(proxies: { proxy: string; latency: number }[]): void {
     ...proxies.map((p) => `${p.proxy}  # ${p.latency}ms`),
   ].join("\n");
 
-  fs.writeFileSync(filePath, fileContent, "utf-8");
+  fs.writeFileSync(filePath, "utf-8");
   logger.info(`Saved ${proxies.length} proxies to proxies.txt`);
 }
 
