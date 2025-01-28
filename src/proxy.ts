@@ -29,10 +29,7 @@ const sources = [
   "https://www.proxy-list.download/api/v1/get?type=https",
 ];
 
-// Fungsi untuk menambahkan delay
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Fungsi untuk menambahkan delayWW
 
 // Ambil URL dan kembalikan isinya
 async function fetchUrl(url: string): Promise<string | null> {
