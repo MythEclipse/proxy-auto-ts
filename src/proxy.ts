@@ -142,15 +142,15 @@ function saveProxies(proxies: { proxy: string; latency: number }[]): void {
     return;
   }
 
-  const timestamp = new Date().toISOString();
+  // const timestamp = new Date().toISOString();
   const filePath = path.resolve(__dirname, "../proxies.txt");
 
-  const fileContent = [
-    `# Proxy List - Updated: ${timestamp}`,
-    `# Total proxies: ${proxies.length}`,
-    "",
-    ...proxies.map((p) => `${p.proxy}  # ${p.latency}ms`),
-  ].join("\n");
+  // const fileContent = [
+  //   `# Proxy List - Updated: ${timestamp}`,
+  //   `# Total proxies: ${proxies.length}`,
+  //   "",
+  //   ...proxies.map((p) => `${p.proxy}  # ${p.latency}ms`),
+  // ].join("\n");
 
   fs.writeFileSync(filePath, "utf-8");
   logger.info(`Saved ${proxies.length} proxies to proxies.txt`);
