@@ -1,91 +1,245 @@
-# Proxy Auto Fetcher
+# 🔄 Proxy Auto TS
 
-Proyek ini adalah proxy auto-fetcher berbasis TypeScript yang secara berkala mengambil dan memvalidasi daftar proxy dari berbagai sumber. Proxy yang telah divalidasi disimpan ke file untuk digunakan dalam aplikasi lain.
+A comprehensive TypeScript library for automatic proxy management with validation, rotation, and intelligent selection.
 
-## Daftar Isi
+[![npm version](https://badge.fury.io/js/proxy-auto-ts.svg)](https://badge.fury.io/js/proxy-auto-ts)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-- [Instalasi](#instalasi)
-- [Penggunaan](#penggunaan)
-- [Fitur](#fitur)
-- [Konfigurasi](#konfigurasi)
-- [Skrip](#skrip)
-- [Struktur Kode](#struktur-kode)
+## ✨ Features
 
-## Instalasi
+- 🔄 **Automatic Proxy Rotation**: Seamlessly rotate through working proxies
+- 🧪 **Proxy Validation**: Built-in proxy testing and validation
+- ⚡ **Performance Optimization**: Latency-based proxy selection
+- 🛡️ **Fallback Support**: Multiple URL fallbacks for enhanced reliability
+- 🎯 **Smart Headers**: Random User-Agent rotation and realistic headers
+- 📊 **Comprehensive Statistics**: Detailed proxy performance metrics
+- 🚀 **Easy Integration**: Simple API with TypeScript support
+- 🔧 **Configurable**: Customizable timeouts, fallbacks, and user agents
 
-1. Clone repositori:
-    ```sh
-    git clone https://github.com/MythEclipse/proxy-auto-ts.git
-    cd proxy-auto-ts
-    ```
+## 📦 Installation
 
-2. Instal dependensi dengan Bun:
-    ```sh
-    bun install
-    ```
+```bash
+npm install proxy-auto-ts
+# or
+yarn add proxy-auto-ts
+# or
+bun add proxy-auto-ts
+```
 
-## Penggunaan
+## 🚀 Quick Start
 
-### Mengambil dan Memvalidasi Proxy
+```typescript
+import { ProxyManager } from 'proxy-auto-ts';
 
-Untuk mengambil dan memvalidasi proxy, jalankan:
-```sh
+// Initialize with default configuration
+const proxyManager = new ProxyManager();
+
+// Fetch data through proxy
+const result = await proxyManager.fetchWithProxy('https://httpbin.org/ip');
+console.log('Your IP:', result.data.origin);
+console.log('Used proxy:', result.proxy);
+console.log('Latency:', result.latency + 'ms');
+```
+
+## 📖 API Documentation
+
+### ProxyManager
+
+#### Constructor
+
+```typescript
+new ProxyManager(config?: ProxyManagerConfig)
+```
+
+**Configuration Options:**
+
+```typescript
+interface ProxyManagerConfig {
+  timeout?: number;              // Request timeout (default: 15000ms)
+  validationTimeout?: number;    // Proxy validation timeout (default: 8000ms)
+  fallbackUrls?: string[];       // Fallback URLs for testing
+  userAgents?: string[];         // Custom User-Agent list
+  proxyListPath?: string;        // Custom proxy list file path
+}
+```
+
+#### Methods
+
+##### `fetchWithProxy(url: string, maxRetries?: number): Promise<ProxyFetchResult>`
+
+Fetch URL through the first available working proxy with automatic fallbacks.
+
+```typescript
+const result = await proxyManager.fetchWithProxy('https://example.com', 5);
+```
+
+##### `findBestProxy(testUrl?: string, maxProxiesToTest?: number): Promise<ProxyFetchResult>`
+
+Find the best performing proxy based on latency.
+
+```typescript
+const bestProxy = await proxyManager.findBestProxy();
+console.log(`Best proxy: ${bestProxy.proxy} (${bestProxy.latency}ms)`);
+```
+
+##### `fetchWithSpecificProxy(url: string, targetProxy: string): Promise<ProxyFetchResult>`
+
+Fetch URL using a specific proxy.
+
+```typescript
+const result = await proxyManager.fetchWithSpecificProxy(
+  'https://example.com', 
+  '1.2.3.4:8080'
+);
+```
+
+##### `testProxy(proxy: string, testUrl?: string): Promise<boolean>`
+
+Test if a specific proxy is working.
+
+```typescript
+const isWorking = await proxyManager.testProxy('1.2.3.4:8080');
+```
+
+##### `getStats(): object`
+
+Get proxy statistics and configuration.
+
+```typescript
+const stats = proxyManager.getStats();
+console.log(`Total proxies: ${stats.totalProxies}`);
+```
+
+### Types
+
+```typescript
+interface ProxyFetchResult {
+  data: any;        // Response data
+  proxy: string;    // Used proxy address
+  latency: number;  // Request latency in milliseconds
+}
+```
+
+## 🛠️ Advanced Usage
+
+### Custom Configuration
+
+```typescript
+import { ProxyManager } from 'proxy-auto-ts';
+
+const proxyManager = new ProxyManager({
+  timeout: 20000,
+  validationTimeout: 10000,
+  fallbackUrls: [
+    'https://httpbin.org/ip',
+    'https://api.ipify.org?format=json'
+  ],
+  userAgents: [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+  ],
+  proxyListPath: './custom-proxies.txt'
+});
+```
+
+### Error Handling
+
+```typescript
+try {
+  const result = await proxyManager.fetchWithProxy('https://example.com');
+  console.log('Success:', result.data);
+} catch (error) {
+  console.error('All proxies failed:', error.message);
+}
+```
+
+### Performance Optimization
+
+```typescript
+// Find and use the best proxy
+const bestProxy = await proxyManager.findBestProxy();
+
+// Use the best proxy for subsequent requests
+const result = await proxyManager.fetchWithSpecificProxy(
+  'https://your-target-site.com',
+  bestProxy.proxy
+);
+```
+
+## 📁 Proxy List Format
+
+Create a `proxies.txt` file with the following format:
+
+```
+# Proxy List - Updated: 2025-07-06T08:23:16.183Z
+# Total proxies: 59
+
+52.74.26.202:8080  # 133ms
+152.42.170.187:9090  # 171ms
+188.166.230.109:31028  # 273ms
+182.253.109.26:8080  # 286ms
+```
+
+## 🧪 Testing
+
+```bash
+# Run comprehensive tests
+bun run test
+
+# Quick test
+bun run test:quick
+
+# Update proxy list
 bun run proxy
 ```
 
-Proxy yang telah divalidasi akan disimpan ke `proxies.txt` dengan informasi latensi.
+## 🔧 Development
 
-### Menggunakan Proxy untuk Fetch Data
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/proxy-auto-ts.git
 
-Untuk menggunakan proxy yang telah divalidasi untuk fetch data:
-```sh
-bun run dev
+# Install dependencies
+bun install
+
+# Build the library
+bun run build
+
+# Run tests
+bun run test
 ```
 
-## Fitur
+## 📝 Scripts
 
-- ✅ **Multi-source proxy fetching**: Mengambil proxy dari berbagai sumber
-- ✅ **Concurrent validation**: Validasi proxy secara paralel untuk performa optimal
-- ✅ **Latency measurement**: Mengukur dan mengurutkan proxy berdasarkan latensi
-- ✅ **Error handling**: Penanganan error yang robust
-- ✅ **Logging**: Logging yang informatif dengan pino
-- ✅ **Type safety**: Menggunakan TypeScript untuk type safety
-- ✅ **Modular architecture**: Kode yang terorganisir dengan baik
+- `build` - Build the library for production
+- `dev` - Run development tests
+- `test` - Run comprehensive tests
+- `proxy` - Update proxy list from sources
+- `clean` - Clean build directory
 
-## Konfigurasi
+## 🤝 Contributing
 
-Konfigurasi dapat disesuaikan di `src/proxy.ts`:
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-```typescript
-const CONFIG = {
-  FETCH_TIMEOUT: 20000,        // Timeout untuk fetch proxy sources
-  VALIDATION_TIMEOUT: 6000,    // Timeout untuk validasi proxy
-  VALIDATION_CONCURRENCY: 50,  // Jumlah proxy yang divalidasi bersamaan
-  TEST_URL: "https://www.google.com", // URL untuk test proxy
-} as const;
-```
+## 📄 License
 
-## Skrip
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-- `bun run dev`: Jalankan aplikasi utama (index.ts)
-- `bun run proxy`: Ambil dan validasi proxy, lalu simpan ke `proxies.txt`
-- `bun run start`: Jalankan aplikasi utama
-- `bun run build`: Build aplikasi untuk production
-- `bun run test`: Test aplikasi dengan proxy
+## 🙏 Acknowledgments
 
-## Struktur Kode
+- Built with TypeScript for type safety
+- Uses axios for HTTP requests
+- Powered by https-proxy-agent for proxy support
+- Includes automatic proxy validation and rotation
 
-### `src/proxy.ts`
-- **ProxyUtils**: Utility functions untuk parsing dan formatting proxy
-- **HttpClient**: HTTP client untuk fetch dan validasi proxy
-- **ProxyService**: Service utama untuk mengelola proxy operations
+## 📞 Support
 
-### `src/index.ts`
-- **ProxyManager**: Manager untuk menggunakan proxy yang telah divalidasi
-- **ProxyFetchResult**: Interface untuk hasil fetch dengan proxy
-
-### GitHub Actions
-- Workflow otomatis untuk fetch proxy setiap hari
-- Menggunakan Bun untuk performa yang lebih baik
-- Auto-commit hasil ke repository
+- 📧 Email: your.email@example.com
+- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/proxy-auto-ts/issues)
+- 📖 Documentation: [GitHub Wiki](https://github.com/yourusername/proxy-auto-ts/wiki)
 

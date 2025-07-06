@@ -1,20 +1,56 @@
 {
   "name": "proxy-auto-ts",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "A comprehensive TypeScript library for automatic proxy management with validation, rotation, and intelligent selection",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
-  "scripts": {
-    "dev": "bun run src/index.ts",
-    "proxy": "bun run src/proxy.ts",
-    "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target node",
-    "build:proxy": "bun build src/proxy.ts --outdir dist --target node",
-    "test": "bun run src/index.ts"
+  "files": [
+    "dist",
+    "proxies.txt",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "scripts": {
+    "build": "tsc && bun build src/index.ts --outdir dist --target node --format esm",
+    "build:lib": "tsc",
+    "dev": "bun run src/test.ts",
+    "proxy": "bun run src/proxy.ts",
+    "test": "bun run src/test.ts",
+    "test:quick": "bun run -e 'import { quickTest } from \"./src/test.js\"; quickTest()'",
+    "examples": "bun run src/examples.ts",
+    "prepublishOnly": "bun run build",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "proxy",
+    "http",
+    "https",
+    "scraping",
+    "typescript",
+    "proxy-rotation",
+    "proxy-validation",
+    "web-scraping",
+    "automation",
+    "proxy-manager"
+  ],
+  "author": "MythEclipse <asepharyana71@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MythEclipse/proxy-auto-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MythEclipse/proxy-auto-ts/issues"
+  },
+  "homepage": "https://github.com/MythEclipse/proxy-auto-ts#readme",
   "dependencies": {
     "@types/node": "^22.10.6",
     "axios": "^1.7.9",
@@ -27,5 +63,8 @@
   },
   "devDependencies": {
     "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
