@@ -19,13 +19,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const CONFIG = {
-  FETCH_TIMEOUT: 10000,
-  VALIDATION_TIMEOUT: 3000,
-  VALIDATION_CONCURRENCY: Math.max(200, os.cpus().length * 50), // Dynamic based on CPU cores
-  TEST_URL: "https://httpbin.org/ip",
+  FETCH_TIMEOUT: 8000,
+  VALIDATION_TIMEOUT: 2000, // Lebih cepat lagi - 2 detik saja
+  VALIDATION_CONCURRENCY: Math.max(300, os.cpus().length * 60), // Lebih tinggi untuk HEAD request
+  TEST_URL: "https://httpbin.org/status/200", // Endpoint yang lebih cepat
   USER_AGENT: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-  MAX_LATENCY: 3000,
-  BATCH_SIZE: 100, // Process in smaller batches for better progress tracking
+  MAX_LATENCY: 2000, // Hanya proxy super cepat
+  BATCH_SIZE: 150, // Batch lebih besar untuk HEAD request
 } as const;
 
 const PROXY_SOURCES = [
@@ -131,28 +131,33 @@ export class HttpClient {
       const agent = new HttpsProxyAgent(`http://${proxy}`);
       const startTime = Date.now();
 
-      await axios.head(CONFIG.TEST_URL, {
+      // Menggunakan HEAD request untuk test yang lebih cepat
+      const response = await axios.head(CONFIG.TEST_URL, {
         httpsAgent: agent,
         timeout: CONFIG.VALIDATION_TIMEOUT,
         headers: {
           "User-Agent": CONFIG.USER_AGENT,
         },
+        // Optimasi untuk HEAD request
+        maxRedirects: 0, // Tidak follow redirect
+        validateStatus: (status) => status >= 200 && status < 400, // Accept 2xx dan 3xx
       });
 
       const latency = Date.now() - startTime;
       
-      // Filter out proxies that are too slow
+      // Filter proxy yang terlalu lambat
       if (latency > CONFIG.MAX_LATENCY) {
         return null;
       }
 
-      // Real-time logging when proxy is found
-      logger.info(`✅ WORKING: ${proxy} (${latency}ms)`);
+      // Real-time logging dengan status code
+      logger.info(`✅ WORKING: ${proxy} (${latency}ms) [${response.status}]`);
       return { proxy, latency };
     } catch (error) {
-      // Fail fast - log only critical errors, ignore timeouts/connection errors
-      if (error instanceof Error && !error.message.includes('timeout') && !error.message.includes('ECONNREFUSED')) {
-        logger.debug(`Proxy ${proxy} error: ${error.message}`);
+      // Fail fast - silent untuk performa maksimal
+      if (error instanceof Error && error.message.includes('ENOTFOUND')) {
+        // Log hanya DNS errors yang penting
+        logger.debug(`DNS error for ${proxy}`);
       }
       return null;
     }
@@ -203,20 +208,24 @@ export class ProxyService {
 
   static async validateProxies(proxies: Set<string>): Promise<ValidatedProxy[]> {
     const totalProxies = proxies.size;
-    logger.info(`🚀 Starting validation of ${totalProxies} proxies with ${CONFIG.VALIDATION_CONCURRENCY} concurrent threads`);
+    logger.info(`🚀 Starting SUPER FAST validation of ${totalProxies} proxies with ${CONFIG.VALIDATION_CONCURRENCY} concurrent threads`);
+    logger.info(`💨 Using HEAD requests for maximum speed`);
     
     const validatedProxies: ValidatedProxy[] = [];
     const proxyArray = Array.from(proxies);
     let processedCount = 0;
     let validCount = 0;
     
-    // Progress reporting
+    // Progress reporting lebih sering karena HEAD request lebih cepat
     const progressInterval = setInterval(() => {
       const progress = ((processedCount / totalProxies) * 100).toFixed(1);
-      logger.info(`📊 Progress: ${progress}% (${processedCount}/${totalProxies}) | Found: ${validCount} working proxies`);
-    }, 2000);
+      const speed = Math.round(processedCount / ((Date.now() - startTime) / 1000));
+      logger.info(`📊 Progress: ${progress}% (${processedCount}/${totalProxies}) | Found: ${validCount} | Speed: ${speed}/s`);
+    }, 1500); // Update setiap 1.5 detik
 
-    // Process in batches with high concurrency
+    const startTime = Date.now();
+
+    // Process dalam batch yang lebih besar karena HEAD request ringan
     const batchSize = CONFIG.BATCH_SIZE;
     const batches = [];
     
@@ -246,9 +255,10 @@ export class ProxyService {
 
       await Promise.all(validationTasks);
       
-      // Batch completion log
+      // Batch completion log dengan speed
       const batchProgress = ((batchIndex + 1) / batches.length * 100).toFixed(1);
-      logger.info(`✅ Batch ${batchIndex + 1}/${batches.length} done (${batchProgress}%) | Valid: ${validCount}`);
+      const currentSpeed = Math.round(processedCount / ((Date.now() - startTime) / 1000));
+      logger.info(`✅ Batch ${batchIndex + 1}/${batches.length} done (${batchProgress}%) | Valid: ${validCount} | Speed: ${currentSpeed}/s`);
     }
 
     clearInterval(progressInterval);
@@ -287,10 +297,11 @@ export class ProxyService {
 async function main(): Promise<void> {
   try {
     const cpuCount = os.cpus().length;
-    logger.info(`🚀 Starting MULTI-THREADED proxy validation`);
+    logger.info(`🚀 Starting SUPER FAST HEAD-based proxy validation`);
     logger.info(`💻 System: ${cpuCount} CPU cores detected`);
     logger.info(`⚡ Concurrency: ${CONFIG.VALIDATION_CONCURRENCY} threads`);
-    logger.info(`⏱️  Timeout: ${CONFIG.VALIDATION_TIMEOUT}ms per proxy`);
+    logger.info(`⏱️  Timeout: ${CONFIG.VALIDATION_TIMEOUT}ms per proxy (HEAD request)`);
+    logger.info(`🎯 Max Latency: ${CONFIG.MAX_LATENCY}ms (super fast only)`);
     
     const startTime = Date.now();
     
@@ -298,7 +309,7 @@ async function main(): Promise<void> {
     const proxies = await ProxyService.fetchAllProxies();
     logger.info(`📥 Fetched ${proxies.size} proxies from ${PROXY_SOURCES.length} sources`);
 
-    // Validate proxies with multi-threading
+    // Validate proxies with HEAD requests
     const validatedProxies = await ProxyService.validateProxies(proxies);
     logger.info(`✅ Validated ${validatedProxies.length} working proxies`);
 
@@ -311,13 +322,14 @@ async function main(): Promise<void> {
     
     logger.info(`🏁 COMPLETED in ${Math.round(totalTime/1000)}s`);
     logger.info(`📊 Success Rate: ${successRate}% (${validatedProxies.length}/${proxies.size})`);
-    logger.info(`⚡ Performance: ${proxiesPerSecond} proxies/second`);
+    logger.info(`💨 Performance: ${proxiesPerSecond} proxies/second (HEAD requests)`);
     
     if (validatedProxies.length > 0) {
       const avgLatency = Math.round(validatedProxies.reduce((sum, p) => sum + p.latency, 0) / validatedProxies.length);
       logger.info(`📈 Average latency: ${avgLatency}ms`);
       logger.info(`🥇 Fastest: ${validatedProxies[0].proxy} (${validatedProxies[0].latency}ms)`);
       logger.info(`🥉 Slowest: ${validatedProxies[validatedProxies.length - 1].proxy} (${validatedProxies[validatedProxies.length - 1].latency}ms)`);
+      logger.info(`💾 Saved to: proxies.txt`);
     }
   } catch (error) {
     logger.error({ err: error }, "❌ Error in main function");
