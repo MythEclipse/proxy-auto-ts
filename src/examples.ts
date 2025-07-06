@@ -8,6 +8,7 @@ async function basicExample() {
   console.log('🚀 Basic Example');
   
   const proxyManager = new ProxyManager();
+  await proxyManager.initialize();
   
   try {
     const result = await proxyManager.fetchWithProxy('https://httpbin.org/ip');
@@ -68,7 +69,7 @@ async function statsExample() {
   console.log('\n📊 Statistics Example');
   
   const proxyManager = new ProxyManager();
-  const stats = proxyManager.getStats();
+  const stats = await proxyManager.getStats();
   
   console.log('📊 Total proxies:', stats.totalProxies);
   console.log('📁 Proxy list path:', stats.proxyListPath);

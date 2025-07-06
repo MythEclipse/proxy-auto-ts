@@ -1,6 +1,6 @@
 {
   "name": "proxy-auto-ts",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "A comprehensive TypeScript library for automatic proxy management with validation, rotation, and intelligent selection",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -21,10 +21,11 @@
   "scripts": {
     "build": "tsc && bun build src/index.ts --outdir dist --target node --format esm",
     "build:lib": "tsc",
-    "dev": "bun run src/test.ts",
+    "dev": "bun run src/fast-test.ts",
     "proxy": "bun run src/proxy.ts",
-    "test": "bun run src/test.ts",
-    "test:quick": "bun run -e 'import { quickTest } from \"./src/test.js\"; quickTest()'",
+    "test": "bun run src/fast-test.ts",
+    "test:full": "bun run src/test.ts",
+    "test:quick": "bun run src/fast-test.ts",
     "examples": "bun run src/examples.ts",
     "prepublishOnly": "bun run build",
     "clean": "rm -rf dist"

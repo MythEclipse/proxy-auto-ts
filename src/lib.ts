@@ -1,7 +1,5 @@
 import axios, { AxiosResponse } from "axios";
 import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import { HttpsProxyAgent } from "https-proxy-agent";
 
 // Types
@@ -45,6 +43,15 @@ const DEFAULT_CONFIG = {
  * import { ProxyManager } from 'proxy-auto-ts';
  * 
  * const proxyManager = new ProxyManager();
+ * await proxyManager.initialize(); // Initialize proxy list
+ * const result = await proxyManager.fetchWithProxy('https://httpbin.org/ip');
+ * console.log(result.data);
+ * ```
+ * 
+ * @example
+ * ```typescript
+ * // Auto-initialization on first use
+ * const proxyManager = new ProxyManager();
  * const result = await proxyManager.fetchWithProxy('https://httpbin.org/ip');
  * console.log(result.data);
  * ```
@@ -52,49 +59,81 @@ const DEFAULT_CONFIG = {
 export class ProxyManager {
   private proxies: string[] = [];
   private readonly config: Required<ProxyManagerConfig>;
+  private initialized: boolean = false;
 
   constructor(config: ProxyManagerConfig = {}) {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    
     this.config = {
       timeout: config.timeout ?? DEFAULT_CONFIG.TIMEOUT,
       validationTimeout: config.validationTimeout ?? DEFAULT_CONFIG.VALIDATION_TIMEOUT,
       fallbackUrls: config.fallbackUrls ?? [...DEFAULT_CONFIG.FALLBACK_URLS],
       userAgents: config.userAgents ?? [...DEFAULT_CONFIG.USER_AGENTS],
-      proxyListPath: config.proxyListPath ?? path.resolve(__dirname, "../proxies.txt")
+      proxyListPath: config.proxyListPath ?? "https://raw.githubusercontent.com/MythEclipse/proxy-auto-ts/main/proxies.txt"
     };
-
-    this.loadProxies();
   }
 
   /**
-   * Load proxies from file
+   * Initialize the proxy manager by loading proxies
    */
-  private loadProxies(): void {
+  async initialize(): Promise<void> {
+    if (!this.initialized) {
+      await this.loadProxies();
+      this.initialized = true;
+    }
+  }
+
+  /**
+   * Ensure proxy manager is initialized
+   */
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+  }
+
+  /**
+   * Load proxies from file or URL
+   */
+  private async loadProxies(): Promise<void> {
     try {
-      const data = fs.readFileSync(this.config.proxyListPath, "utf-8");
+      let data: string;
+      
+      if (this.config.proxyListPath.startsWith('http')) {
+        // Load from URL
+        const response = await axios.get(this.config.proxyListPath, {
+          timeout: this.config.timeout,
+          headers: {
+            'User-Agent': this.getRandomUserAgent()
+          }
+        });
+        data = response.data;
+      } else {
+        // Load from local file
+        data = fs.readFileSync(this.config.proxyListPath, "utf-8");
+      }
+      
       this.proxies = data
         .split("\n")
         .filter((line) => line.trim() !== "" && !line.startsWith("#"))
         .map((line) => line.split(" ")[0].trim())
         .filter(Boolean);
     } catch (error) {
-      throw new Error(`Failed to load proxy list: ${(error as Error).message}`);
+      throw new Error(`Failed to load proxy list from ${this.config.proxyListPath}: ${(error as Error).message}`);
     }
   }
 
   /**
    * Get copy of loaded proxies
    */
-  getProxies(): string[] {
+  async getProxies(): Promise<string[]> {
+    await this.ensureInitialized();
     return [...this.proxies];
   }
 
   /**
    * Get number of loaded proxies
    */
-  getProxyCount(): number {
+  async getProxyCount(): Promise<number> {
+    await this.ensureInitialized();
     return this.proxies.length;
   }
 
@@ -139,6 +178,8 @@ export class ProxyManager {
    * @returns Promise<ProxyFetchResult>
    */
   async fetchWithProxy(url: string, maxRetries: number = 10): Promise<ProxyFetchResult> {
+    await this.ensureInitialized();
+    
     if (this.proxies.length === 0) {
       throw new Error("No proxies available.");
     }
@@ -193,10 +234,10 @@ export class ProxyManager {
       
       attempts++;
       
-      // Add delay between different proxies
-      if (attempts < this.proxies.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      // Don't add delay between proxies for better performance
+      // if (attempts < this.proxies.length) {
+      //   await new Promise(resolve => setTimeout(resolve, 1000));
+      // }
     }
 
     throw new Error(`All proxy attempts failed after ${attempts} tries. Last errors:\n${errors.slice(-3).join('\n')}`);
@@ -210,6 +251,7 @@ export class ProxyManager {
    * @returns Promise<ProxyFetchResult>
    */
   async findBestProxy(testUrl: string = "https://httpbin.org/ip", maxProxiesToTest: number = 15): Promise<ProxyFetchResult> {
+    await this.ensureInitialized();
     const testPromises = this.proxies.slice(0, maxProxiesToTest).map(async (proxy) => {
       try {
         const agent = new HttpsProxyAgent(this.formatProxyUrl(proxy));
@@ -312,7 +354,8 @@ export class ProxyManager {
    * 
    * @returns Object with proxy statistics
    */
-  getStats(): { totalProxies: number; proxyListPath: string; config: Required<ProxyManagerConfig> } {
+  async getStats(): Promise<{ totalProxies: number; proxyListPath: string; config: Required<ProxyManagerConfig> }> {
+    await this.ensureInitialized();
     return {
       totalProxies: this.proxies.length,
       proxyListPath: this.config.proxyListPath,

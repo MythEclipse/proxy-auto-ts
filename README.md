@@ -35,11 +35,23 @@ import { ProxyManager } from 'proxy-auto-ts';
 // Initialize with default configuration
 const proxyManager = new ProxyManager();
 
-// Fetch data through proxy
+// Auto-initialization on first use
 const result = await proxyManager.fetchWithProxy('https://httpbin.org/ip');
 console.log('Your IP:', result.data.origin);
 console.log('Used proxy:', result.proxy);
 console.log('Latency:', result.latency + 'ms');
+```
+
+### Manual Initialization
+
+```typescript
+import { ProxyManager } from 'proxy-auto-ts';
+
+const proxyManager = new ProxyManager();
+await proxyManager.initialize(); // Explicitly initialize proxy list
+
+const result = await proxyManager.fetchWithProxy('https://httpbin.org/ip');
+console.log('Your IP:', result.data.origin);
 ```
 
 ## 📖 API Documentation
