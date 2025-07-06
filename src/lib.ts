@@ -1,6 +1,87 @@
 import axios, { AxiosResponse } from "axios";
 import fs from "fs";
 import { HttpsProxyAgent } from "https-proxy-agent";
+import os from "os";
+import path from "path";
+import { Worker } from "worker_threads";
+// Helper for running proxy validation in worker threads
+function runProxyValidationInWorkers(proxies: string[], url: string, timeout: number, userAgents: string[], workerScript: string): Promise<{proxy: string, latency: number, status: number|null}[]> {
+  return new Promise((resolve) => {
+    const numCores = Math.min(8, Math.max(1, os.cpus().length)); // Limit to 8 workers for efficiency
+    const batchSize = Math.ceil(proxies.length / numCores);
+    let completed = 0;
+    let results: {proxy: string, latency: number, status: number|null}[] = [];
+    const startTime = Date.now();
+    let totalProcessed = 0;
+
+    function logProgress() {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const speed = totalProcessed / (elapsed || 1);
+      const eta = speed > 0 ? (proxies.length - totalProcessed) / speed : 0;
+      const validCount = results.filter(r => r.status === 200).length;
+      
+      process.stdout.write(`\r📊 Worker Progress: ${((totalProcessed / proxies.length) * 100).toFixed(1)}% (${totalProcessed}/${proxies.length}) | Found: ${validCount} | Speed: ${speed.toFixed(1)}/s | ETA: ${eta.toFixed(1)}s   `);
+    }
+
+    for (let i = 0; i < numCores; i++) {
+      const batch = proxies.slice(i * batchSize, (i + 1) * batchSize);
+      if (batch.length === 0) {
+        completed++;
+        continue;
+      }
+
+      const worker = new Worker(workerScript, {
+        workerData: {
+          proxies: batch,
+          url,
+          timeout,
+          userAgents
+        }
+      });
+
+      worker.on("message", (msg) => {
+        if (msg.type === 'progress') {
+          results = results.concat(msg.results);
+          totalProcessed += msg.results.length;
+          logProgress();
+        } else if (msg.type === 'complete') {
+          // Final results from this worker
+          const newResults = msg.results.filter((r: any) => !results.some(existing => existing.proxy === r.proxy));
+          results = results.concat(newResults);
+          totalProcessed += newResults.length;
+          logProgress();
+          
+          completed++;
+          if (completed >= numCores) {
+            process.stdout.write("\n");
+            resolve(results);
+          }
+        }
+      });
+
+      worker.on("error", () => {
+        completed++;
+        if (completed >= numCores) {
+          process.stdout.write("\n");
+          resolve(results);
+        }
+      });
+
+      worker.on("exit", () => {
+        completed++;
+        if (completed >= numCores) {
+          process.stdout.write("\n");
+          resolve(results);
+        }
+      });
+    }
+
+    // Handle case where no workers are created
+    if (numCores === 0 || completed === numCores) {
+      resolve(results);
+    }
+  });
+}
 
 // Types
 export interface ProxyFetchResult {
@@ -154,20 +235,28 @@ export class ProxyManager {
   /**
    * Validate proxy for specific URL
    */
+  // Validate a single proxy using the worker (for testProxy)
   private async validateProxyForUrl(proxy: string, url: string): Promise<boolean> {
-    try {
-      const agent = new HttpsProxyAgent(this.formatProxyUrl(proxy));
-      await axios.head(url, {
-        httpsAgent: agent,
-        timeout: this.config.validationTimeout,
-        headers: {
-          'User-Agent': this.getRandomUserAgent()
+    const workerScript = path.resolve(__dirname, "proxyWorker.js");
+    return new Promise((resolve) => {
+      const worker = new Worker(workerScript, {
+        workerData: {
+          proxies: [proxy],
+          url,
+          timeout: this.config.validationTimeout,
+          userAgents: this.config.userAgents
         }
       });
-      return true;
-    } catch {
-      return false;
-    }
+      worker.on("message", (msg) => {
+        if (Array.isArray(msg) && msg.length > 0) {
+          resolve(msg[0].status === 200);
+        } else {
+          resolve(false);
+        }
+      });
+      worker.on("error", () => resolve(false));
+      worker.on("exit", () => {});
+    });
   }
 
   /**
@@ -250,48 +339,41 @@ export class ProxyManager {
    * @param maxProxiesToTest - Maximum number of proxies to test
    * @returns Promise<ProxyFetchResult>
    */
-  async findBestProxy(testUrl: string = "https://httpbin.org/ip", maxProxiesToTest: number = 15): Promise<ProxyFetchResult> {
+  async findBestProxy(testUrl: string = "https://httpbin.org/ip", maxProxiesToTest: number = 50): Promise<ProxyFetchResult> {
     await this.ensureInitialized();
-    const testPromises = this.proxies.slice(0, maxProxiesToTest).map(async (proxy) => {
-      try {
-        const agent = new HttpsProxyAgent(this.formatProxyUrl(proxy));
-        const startTime = Date.now();
-        
-        const response: AxiosResponse = await axios.get(testUrl, {
-          httpsAgent: agent,
-          timeout: this.config.validationTimeout,
-          headers: {
-            'User-Agent': this.getRandomUserAgent()
-          }
-        });
-        
-        const latency = Date.now() - startTime;
-        return {
-          data: response.data,
-          proxy,
-          latency,
-        };
-      } catch {
-        return null;
-      }
-    });
-
-    const testResults = await Promise.all(testPromises);
-    const validResults = testResults.filter(result => result !== null) as ProxyFetchResult[];
+    const workerScript = path.resolve(__dirname, "proxyWorker.js");
+    const proxiesToTest = this.proxies.slice(0, maxProxiesToTest);
     
+    console.log(`🔍 Finding best proxy among ${proxiesToTest.length} candidates...`);
+    
+    const results = await runProxyValidationInWorkers(
+      proxiesToTest,
+      testUrl,
+      3000, // Use shorter timeout for finding best proxy
+      this.config.userAgents,
+      workerScript
+    );
+    
+    // Only keep successful (status 200) proxies
+    const validResults = results.filter(r => r.status === 200);
     if (validResults.length === 0) {
       throw new Error("No working proxies found during testing");
     }
-
+    
     // Sort by latency and return the fastest
     validResults.sort((a, b) => a.latency - b.latency);
-    const bestProxy = validResults[0];
+    const best = validResults[0];
+    
+    console.log(`⚡ Best proxy found: ${best.proxy} (${best.latency}ms latency)`);
+    
+    // Fetch data with the best proxy
+    const fetchResult = await this.fetchWithSpecificProxy(testUrl, best.proxy);
     
     // Reorder proxies to put the best one first
-    this.proxies = this.proxies.filter(p => p !== bestProxy.proxy);
-    this.proxies.unshift(bestProxy.proxy);
+    this.proxies = this.proxies.filter(p => p !== best.proxy);
+    this.proxies.unshift(best.proxy);
     
-    return bestProxy;
+    return fetchResult;
   }
 
   /**
@@ -347,6 +429,31 @@ export class ProxyManager {
    */
   async testProxy(proxy: string, testUrl: string = "https://httpbin.org/ip"): Promise<boolean> {
     return this.validateProxyForUrl(proxy, testUrl);
+  }
+
+  /**
+   * Validate all loaded proxies using worker threads for maximum performance
+   * 
+   * @param testUrl - URL to test proxies against
+   * @returns Promise<{proxy: string, latency: number, status: number|null}[]>
+   */
+  async validateAllProxies(testUrl: string = "https://httpbin.org/ip"): Promise<{proxy: string, latency: number, status: number|null}[]> {
+    await this.ensureInitialized();
+    const workerScript = path.resolve(__dirname, "proxyWorker.js");
+    console.log(`🚀 Starting validation of ${this.proxies.length} proxies using ${os.cpus().length} CPU cores...`);
+    
+    const results = await runProxyValidationInWorkers(
+      this.proxies,
+      testUrl,
+      this.config.validationTimeout,
+      this.config.userAgents,
+      workerScript
+    );
+    
+    const validProxies = results.filter(r => r.status === 200);
+    console.log(`✅ Validation complete! Found ${validProxies.length} working proxies out of ${this.proxies.length} tested.`);
+    
+    return results;
   }
 
   /**

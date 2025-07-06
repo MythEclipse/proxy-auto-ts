@@ -2,11 +2,11 @@ import axios from "axios";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import * as fs from "fs";
 import * as path from "path";
-import pLimit from "p-limit";
 import pino from "pino";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import * as os from "os";
+import { Worker } from "worker_threads";
 
 // Types
 export interface ValidatedProxy {
@@ -182,6 +182,122 @@ export class ProxyService {
     return proxies;
   }
 
+  // Multi-threaded worker-based validation
+  static async validateProxiesWithWorkers(proxies: Set<string>): Promise<ValidatedProxy[]> {
+    const totalProxies = proxies.size;
+    const numWorkers = Math.min(8, Math.max(1, os.cpus().length)); // Limit to 8 workers for efficiency
+    
+    logger.info(`🚀 Starting MULTI-THREADED validation of ${totalProxies} proxies using ${numWorkers} worker threads`);
+    logger.info(`💻 System: ${os.cpus().length} CPU cores detected`);
+    logger.info(`⚡ Each worker handles ~${Math.ceil(totalProxies / numWorkers)} proxies`);
+    
+    const proxyArray = Array.from(proxies);
+    const batchSize = Math.ceil(proxyArray.length / numWorkers);
+    const validatedProxies: ValidatedProxy[] = [];
+    
+    let processedCount = 0;
+    const startTime = Date.now();
+    
+    // Progress reporting
+    const progressInterval = setInterval(() => {
+      const progress = ((processedCount / totalProxies) * 100).toFixed(1);
+      const speed = Math.round(processedCount / ((Date.now() - startTime) / 1000));
+      const validCount = validatedProxies.length;
+      
+      const remainingProxies = totalProxies - processedCount;
+      const estimatedSeconds = speed > 0 ? Math.round(remainingProxies / speed) : 0;
+      const estimatedMinutes = Math.floor(estimatedSeconds / 60);
+      const remainingSeconds = estimatedSeconds % 60;
+      
+      const etaText = estimatedMinutes > 0 
+        ? `${estimatedMinutes}m ${remainingSeconds}s` 
+        : `${remainingSeconds}s`;
+      
+      logger.info(`📊 Worker Progress: ${progress}% (${processedCount}/${totalProxies}) | Found: ${validCount} | Speed: ${speed}/s | ETA: ${etaText}`);
+    }, 1500);
+
+    const workerPromises = [];
+    
+    for (let i = 0; i < numWorkers; i++) {
+      const batch = proxyArray.slice(i * batchSize, (i + 1) * batchSize);
+      if (batch.length === 0) continue;
+      
+      const workerPromise = new Promise<ValidatedProxy[]>((resolve) => {
+        const workerScript = path.resolve(__dirname, "proxyWorker.js");
+        const worker = new Worker(workerScript, {
+          workerData: {
+            proxies: batch,
+            url: CONFIG.TEST_URL,
+            timeout: CONFIG.VALIDATION_TIMEOUT,
+            userAgents: [CONFIG.USER_AGENT]
+          }
+        });
+
+        const workerResults: ValidatedProxy[] = [];
+
+        worker.on("message", (msg) => {
+          if (msg.type === 'progress') {
+            // Add valid proxies from this batch
+            const validProxies = msg.results.filter((r: any) => r.status === 200 && r.latency <= CONFIG.MAX_LATENCY);
+            validProxies.forEach((r: any) => {
+              workerResults.push({ proxy: r.proxy, latency: r.latency });
+              validatedProxies.push({ proxy: r.proxy, latency: r.latency });
+              logger.info(`✅ WORKING: ${r.proxy} (${r.latency}ms) [${r.status}] - Worker ${i + 1}`);
+            });
+            
+            processedCount += msg.results.length;
+          } else if (msg.type === 'complete') {
+            // Final batch from worker
+            const validProxies = msg.results.filter((r: any) => r.status === 200 && r.latency <= CONFIG.MAX_LATENCY);
+            validProxies.forEach((r: any) => {
+              if (!workerResults.find(existing => existing.proxy === r.proxy)) {
+                workerResults.push({ proxy: r.proxy, latency: r.latency });
+                validatedProxies.push({ proxy: r.proxy, latency: r.latency });
+                logger.info(`✅ WORKING: ${r.proxy} (${r.latency}ms) [${r.status}] - Worker ${i + 1}`);
+              }
+            });
+            
+            processedCount += msg.results.length;
+            resolve(workerResults);
+          }
+        });
+
+        worker.on("error", (err) => {
+          logger.error(`Worker ${i + 1} error:`, err);
+          resolve(workerResults);
+        });
+
+        worker.on("exit", (code) => {
+          if (code !== 0) {
+            logger.warn(`Worker ${i + 1} exited with code ${code}`);
+          }
+          resolve(workerResults);
+        });
+      });
+
+      workerPromises.push(workerPromise);
+    }
+
+    // Wait for all workers to complete
+    await Promise.all(workerPromises);
+    clearInterval(progressInterval);
+    
+    // Remove duplicates and sort by latency
+    const uniqueProxies = new Map<string, ValidatedProxy>();
+    validatedProxies.forEach(proxy => {
+      const existing = uniqueProxies.get(proxy.proxy);
+      if (!existing || proxy.latency < existing.latency) {
+        uniqueProxies.set(proxy.proxy, proxy);
+      }
+    });
+
+    const finalProxies = Array.from(uniqueProxies.values());
+    finalProxies.sort((a, b) => a.latency - b.latency);
+    
+    logger.info(`🎯 Multi-threaded validation completed: ${finalProxies.length} unique working proxies`);
+    return finalProxies;
+  }
+
   static async fetchAllProxies(): Promise<Set<string>> {
     logger.info("Fetching proxies from all sources");
     const allProxies = new Set<string>();
@@ -206,101 +322,6 @@ export class ProxyService {
     return allProxies;
   }
 
-  static async validateProxies(proxies: Set<string>): Promise<ValidatedProxy[]> {
-    const totalProxies = proxies.size;
-    logger.info(`🚀 Starting SUPER FAST validation of ${totalProxies} proxies with ${CONFIG.VALIDATION_CONCURRENCY} concurrent threads`);
-    logger.info(`💨 Using HEAD requests for maximum speed`);
-    
-    const validatedProxies: ValidatedProxy[] = [];
-    const proxyArray = Array.from(proxies);
-    let processedCount = 0;
-    let validCount = 0;
-    
-    // Progress reporting lebih sering karena HEAD request lebih cepat
-    const startTime = Date.now();
-    const progressInterval = setInterval(() => {
-      const progress = ((processedCount / totalProxies) * 100).toFixed(1);
-      const speed = Math.round(processedCount / ((Date.now() - startTime) / 1000));
-      
-      // Estimasi waktu berdasarkan speed saat ini
-      const remainingProxies = totalProxies - processedCount;
-      const estimatedSeconds = speed > 0 ? Math.round(remainingProxies / speed) : 0;
-      const estimatedMinutes = Math.floor(estimatedSeconds / 60);
-      const remainingSeconds = estimatedSeconds % 60;
-      
-      const etaText = estimatedMinutes > 0 
-        ? `${estimatedMinutes}m ${remainingSeconds}s` 
-        : `${remainingSeconds}s`;
-      
-      logger.info(`📊 Progress: ${progress}% (${processedCount}/${totalProxies}) | Found: ${validCount} | Speed: ${speed}/s | ETA: ${etaText}`);
-    }, 1500); // Update setiap 1.5 detik
-
-    // Process dalam batch yang lebih besar karena HEAD request ringan
-    const batchSize = CONFIG.BATCH_SIZE;
-    const batches = [];
-    
-    for (let i = 0; i < proxyArray.length; i += batchSize) {
-      batches.push(proxyArray.slice(i, i + batchSize));
-    }
-
-    logger.info(`📦 Processing ${batches.length} batches of ${batchSize} proxies each`);
-    
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-      const batch = batches[batchIndex];
-      const limit = pLimit(CONFIG.VALIDATION_CONCURRENCY);
-      
-      const validationTasks = batch.map((proxy) =>
-        limit(async () => {
-          const result = await HttpClient.validateProxy(proxy);
-          processedCount++;
-          
-          if (result) {
-            validatedProxies.push(result);
-            validCount++;
-          }
-          
-          return result;
-        })
-      );
-
-      await Promise.all(validationTasks);
-      
-      // Batch completion log dengan speed dan ETA
-      const batchProgress = ((batchIndex + 1) / batches.length * 100).toFixed(1);
-      const currentSpeed = Math.round(processedCount / ((Date.now() - startTime) / 1000));
-      
-      // ETA untuk batch
-      const remainingBatches = batches.length - (batchIndex + 1);
-      const avgBatchTime = (Date.now() - startTime) / (batchIndex + 1);
-      const batchEtaSeconds = Math.round((remainingBatches * avgBatchTime) / 1000);
-      const batchEtaMinutes = Math.floor(batchEtaSeconds / 60);
-      const batchRemainingSeconds = batchEtaSeconds % 60;
-      
-      const batchEtaText = batchEtaMinutes > 0 
-        ? `${batchEtaMinutes}m ${batchRemainingSeconds}s` 
-        : `${batchRemainingSeconds}s`;
-      
-      logger.info(`✅ Batch ${batchIndex + 1}/${batches.length} done (${batchProgress}%) | Valid: ${validCount} | Speed: ${currentSpeed}/s | ETA: ${batchEtaText}`);
-    }
-
-    clearInterval(progressInterval);
-
-    // Sort by latency (fastest first) and remove duplicates
-    const uniqueProxies = new Map<string, ValidatedProxy>();
-    validatedProxies.forEach(proxy => {
-      const existing = uniqueProxies.get(proxy.proxy);
-      if (!existing || proxy.latency < existing.latency) {
-        uniqueProxies.set(proxy.proxy, proxy);
-      }
-    });
-
-    const finalProxies = Array.from(uniqueProxies.values());
-    finalProxies.sort((a, b) => a.latency - b.latency);
-    
-    logger.info(`🎯 Final result: ${finalProxies.length} unique working proxies`);
-    return finalProxies;
-  }
-
   static saveProxies(proxies: ValidatedProxy[]): void {
     if (proxies.length === 0) {
       logger.warn("No proxies to save!");
@@ -319,9 +340,9 @@ export class ProxyService {
 async function main(): Promise<void> {
   try {
     const cpuCount = os.cpus().length;
-    logger.info(`🚀 Starting SUPER FAST HEAD-based proxy validation`);
+    logger.info(`🚀 Starting MULTI-THREADED proxy validation with worker threads`);
     logger.info(`💻 System: ${cpuCount} CPU cores detected`);
-    logger.info(`⚡ Concurrency: ${CONFIG.VALIDATION_CONCURRENCY} threads`);
+    logger.info(`⚡ Workers: Up to 8 worker threads`);
     logger.info(`⏱️  Timeout: ${CONFIG.VALIDATION_TIMEOUT}ms per proxy (HEAD request)`);
     logger.info(`🎯 Max Latency: ${CONFIG.MAX_LATENCY}ms (super fast only)`);
     
@@ -331,9 +352,9 @@ async function main(): Promise<void> {
     const proxies = await ProxyService.fetchAllProxies();
     logger.info(`📥 Fetched ${proxies.size} proxies from ${PROXY_SOURCES.length} sources`);
 
-    // Validate proxies with HEAD requests
-    const validatedProxies = await ProxyService.validateProxies(proxies);
-    logger.info(`✅ Validated ${validatedProxies.length} working proxies`);
+    // Validate proxies with multi-threaded workers
+    const validatedProxies = await ProxyService.validateProxiesWithWorkers(proxies);
+    logger.info(`✅ Validated ${validatedProxies.length} working proxies using worker threads`);
 
     // Save to file
     ProxyService.saveProxies(validatedProxies);
@@ -342,9 +363,10 @@ async function main(): Promise<void> {
     const successRate = ((validatedProxies.length / proxies.size) * 100).toFixed(1);
     const proxiesPerSecond = Math.round(proxies.size / (totalTime / 1000));
     
-    logger.info(`🏁 COMPLETED in ${Math.round(totalTime/1000)}s`);
+    logger.info(`🏁 MULTI-THREADED VALIDATION COMPLETED in ${Math.round(totalTime/1000)}s`);
     logger.info(`📊 Success Rate: ${successRate}% (${validatedProxies.length}/${proxies.size})`);
-    logger.info(`💨 Performance: ${proxiesPerSecond} proxies/second (HEAD requests)`);
+    logger.info(`💨 Performance: ${proxiesPerSecond} proxies/second (multi-threaded)`);
+    logger.info(`🧵 Used worker threads for 100% CPU utilization`);
     
     if (validatedProxies.length > 0) {
       const avgLatency = Math.round(validatedProxies.reduce((sum, p) => sum + p.latency, 0) / validatedProxies.length);
