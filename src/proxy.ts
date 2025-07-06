@@ -20,13 +20,16 @@ const logger = pino({
 });
 
 const sources = [
-  "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+ "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
   "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
   "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
   "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
   "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
   "https://www.proxy-list.download/api/v1/get?type=http",
   "https://www.proxy-list.download/api/v1/get?type=https",
+  "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt",
+  "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
+  "https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt",
 ];
 
 // Fungsi untuk mengambil URL dengan timeout 6 detik
@@ -38,7 +41,7 @@ async function fetchUrl(url: string): Promise<string | null> {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
       },
-      timeout: 20000, // Timeout 6 detik
+      timeout: 10000, // Timeout 6 detik
     });
     logger.info(`Fetched URL successfully: ${url}`);
     return response.data;
@@ -103,7 +106,7 @@ async function validateProxies(proxies: Set<string>): Promise<{ proxy: string; l
   logger.info(`Validating ${proxies.size} proxies`);
   const validatedProxies: { proxy: string; latency: number }[] = [];
   const proxyArray = Array.from(proxies);
-  const limit = pLimit(100000); // Batasi koneksi simultan
+  const limit = pLimit(1000); // Batasi koneksi simultan
 
   const validationTasks = proxyArray.map((proxy) =>
     limit(async () => {
