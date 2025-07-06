@@ -5,10 +5,12 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "tsc && node dist/index.js",
-    "proxy": "tsc && node dist/proxy.js",
-    "start": "node dist/index.js",
-    "build": "tsc"
+    "dev": "bun run src/index.ts",
+    "proxy": "bun run src/proxy.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "build:proxy": "bun build src/proxy.ts --outdir dist --target node",
+    "test": "bun run src/index.ts"
   },
   "keywords": [],
   "author": "",
