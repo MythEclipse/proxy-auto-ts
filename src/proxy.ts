@@ -217,13 +217,23 @@ export class ProxyService {
     let validCount = 0;
     
     // Progress reporting lebih sering karena HEAD request lebih cepat
+    const startTime = Date.now();
     const progressInterval = setInterval(() => {
       const progress = ((processedCount / totalProxies) * 100).toFixed(1);
       const speed = Math.round(processedCount / ((Date.now() - startTime) / 1000));
-      logger.info(`📊 Progress: ${progress}% (${processedCount}/${totalProxies}) | Found: ${validCount} | Speed: ${speed}/s`);
+      
+      // Estimasi waktu berdasarkan speed saat ini
+      const remainingProxies = totalProxies - processedCount;
+      const estimatedSeconds = speed > 0 ? Math.round(remainingProxies / speed) : 0;
+      const estimatedMinutes = Math.floor(estimatedSeconds / 60);
+      const remainingSeconds = estimatedSeconds % 60;
+      
+      const etaText = estimatedMinutes > 0 
+        ? `${estimatedMinutes}m ${remainingSeconds}s` 
+        : `${remainingSeconds}s`;
+      
+      logger.info(`📊 Progress: ${progress}% (${processedCount}/${totalProxies}) | Found: ${validCount} | Speed: ${speed}/s | ETA: ${etaText}`);
     }, 1500); // Update setiap 1.5 detik
-
-    const startTime = Date.now();
 
     // Process dalam batch yang lebih besar karena HEAD request ringan
     const batchSize = CONFIG.BATCH_SIZE;
@@ -255,10 +265,22 @@ export class ProxyService {
 
       await Promise.all(validationTasks);
       
-      // Batch completion log dengan speed
+      // Batch completion log dengan speed dan ETA
       const batchProgress = ((batchIndex + 1) / batches.length * 100).toFixed(1);
       const currentSpeed = Math.round(processedCount / ((Date.now() - startTime) / 1000));
-      logger.info(`✅ Batch ${batchIndex + 1}/${batches.length} done (${batchProgress}%) | Valid: ${validCount} | Speed: ${currentSpeed}/s`);
+      
+      // ETA untuk batch
+      const remainingBatches = batches.length - (batchIndex + 1);
+      const avgBatchTime = (Date.now() - startTime) / (batchIndex + 1);
+      const batchEtaSeconds = Math.round((remainingBatches * avgBatchTime) / 1000);
+      const batchEtaMinutes = Math.floor(batchEtaSeconds / 60);
+      const batchRemainingSeconds = batchEtaSeconds % 60;
+      
+      const batchEtaText = batchEtaMinutes > 0 
+        ? `${batchEtaMinutes}m ${batchRemainingSeconds}s` 
+        : `${batchRemainingSeconds}s`;
+      
+      logger.info(`✅ Batch ${batchIndex + 1}/${batches.length} done (${batchProgress}%) | Valid: ${validCount} | Speed: ${currentSpeed}/s | ETA: ${batchEtaText}`);
     }
 
     clearInterval(progressInterval);
