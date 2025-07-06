@@ -16,7 +16,7 @@ async function quickTest(): Promise<void> {
   
   console.log(`Testing ${sampleProxies.size} sample proxies...`);
   
-  const validatedProxies = await ProxyService.validateProxiesWithWorkers(sampleProxies);
+  const validatedProxies = await ProxyService.validateProxiesWithHighConcurrency(sampleProxies);
   
   console.log(`✓ Found ${validatedProxies.length} working proxies`);
   validatedProxies.forEach((proxy: ValidatedProxy) => {
