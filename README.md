@@ -16,6 +16,8 @@ A comprehensive TypeScript library for automatic proxy management with validatio
 - 📊 **Comprehensive Statistics**: Detailed proxy performance metrics
 - 🚀 **Easy Integration**: Simple API with TypeScript support
 - 🔧 **Configurable**: Customizable timeouts, fallbacks, and user agents
+- 💾 **Persistent Storage**: Automatic proxy list caching and management
+- 🔒 **Type Safety**: Full TypeScript support with comprehensive type definitions
 
 ## 📦 Installation
 
@@ -26,6 +28,10 @@ yarn add proxy-auto-ts
 # or
 bun add proxy-auto-ts
 ```
+
+> **Current Version**: 1.1.2  
+> **Node.js**: >= 16.0.0  
+> **TypeScript**: >= 5.0.0
 
 ## 🚀 Quick Start
 
@@ -183,7 +189,7 @@ const result = await proxyManager.fetchWithSpecificProxy(
 
 Create a `proxies.txt` file with the following format:
 
-```
+```txt
 # Proxy List - Updated: 2025-07-06T08:23:16.183Z
 # Total proxies: 59
 
@@ -202,15 +208,31 @@ bun run test
 # Quick test
 bun run test:quick
 
+# Full comprehensive test
+bun run test:full
+
 # Update proxy list
 bun run proxy
+
+# Run examples
+bun run examples
 ```
+
+## 🔍 Troubleshooting
+
+For common issues and solutions, please check our [TROUBLESHOOTING.md](TROUBLESHOOTING.md) guide.
+
+**Common Issues:**
+
+- **Connection timeouts**: Adjust the `timeout` and `validationTimeout` settings
+- **No working proxies**: Update your proxy list with `bun run proxy`
+- **Rate limiting**: Implement delays between requests in your application
 
 ## 🔧 Development
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/proxy-auto-ts.git
+git clone https://github.com/proxy-auto-ts/proxy-auto-ts.git
 
 # Install dependencies
 bun install
@@ -225,10 +247,13 @@ bun run test
 ## 📝 Scripts
 
 - `build` - Build the library for production
+- `build:lib` - Build TypeScript definitions
 - `dev` - Run development tests
-- `test` - Run comprehensive tests
+- `test` - Run quick tests
+- `test:full` - Run comprehensive tests
+- `test:quick` - Run quick tests
 - `proxy` - Update proxy list from sources
-- `clean` - Clean build directory
+- `examples` - Run example code
 
 ## 🤝 Contributing
 
@@ -242,6 +267,10 @@ bun run test
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## ⚠️ Legal Notice
+
+This library is intended for educational and testing purposes. Users are responsible for ensuring compliance with all applicable laws and regulations when using proxy servers. Always respect website terms of service and rate limits.
+
 ## 🙏 Acknowledgments
 
 - Built with TypeScript for type safety
@@ -251,7 +280,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- 📧 Email: your.email@example.com
-- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/proxy-auto-ts/issues)
-- 📖 Documentation: [GitHub Wiki](https://github.com/yourusername/proxy-auto-ts/wiki)
-
+- 🐛 Issues: [GitHub Issues](https://github.com/proxy-auto-ts/proxy-auto-ts/issues)
+- 📖 Documentation: [GitHub Repository](https://github.com/proxy-auto-ts/proxy-auto-ts)
+- 💬 Discussions: [GitHub Discussions](https://github.com/proxy-auto-ts/proxy-auto-ts/discussions)

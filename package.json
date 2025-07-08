@@ -1,6 +1,6 @@
 {
   "name": "proxy-auto-ts",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "A comprehensive TypeScript library for automatic proxy management with validation, rotation, and intelligent selection",
   "main": "dist/index.js",
   "module": "dist/index.js",
